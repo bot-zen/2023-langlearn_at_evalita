@@ -3,9 +3,9 @@ from __future__ import annotations
 import os.path
 import xml.etree.ElementTree as ET
 
-
 def raw2txt(essay_xml_ffn:str, txt_out_fpn:str) -> None:
-    """Convert an EVALITA'23 Essays_..._.xml file to individual .txt files."""
+    """Read an EVALITA'23 Essays_..._.xml file and output the individual .txt
+    files."""
     tree = ET.parse(essay_xml_ffn)
     root = tree.getroot()
 
@@ -17,10 +17,9 @@ def raw2txt(essay_xml_ffn:str, txt_out_fpn:str) -> None:
             if len(text.split(' ')) < 24:
                 print(f"WARNING: Page id:{content.get('id')} is small!")
 
-
-if __name__ == '__main__':
-    """Execute `python -m langlearn.dataprep.raw2txt` from the 'root' directory
-    of the repository to convert the LangLearn_Training_Data."""
+def _raw2txt() -> None:
+    """Read `Essays_CItA.xml`,`Essays_COWS-L2H.xml` from
+    `data/interim/LangLearn_Training_Data/{...}/` and output .txt-s."""
     input_dir = 'data/interim/LangLearn_Training_Data/'
     output_dir = 'data/interim/LangLearn_Training_Data/'
     txt_out_fn = 'txt'
