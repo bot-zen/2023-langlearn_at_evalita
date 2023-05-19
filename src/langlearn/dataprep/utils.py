@@ -76,3 +76,5 @@ def _raw2txt() -> None:
         # sequence_abs_1: [0,9]
         # sequence_abs_1: [1,10]
         return df
+
+# ruff: noqa: E501
