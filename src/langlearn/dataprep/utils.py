@@ -16,12 +16,12 @@ def get_txts(essay_xml_ffn: str, shrink_whitespaces=True) -> OrderedDict:
     root = tree.getroot()
 
     for content in root.iter("doc"):
-        txt = content.text.strip()
+        txt = content.text  #.strip()
         if shrink_whitespaces:
-            txt = re.sub(r"[\n\r\f\v]+", '\n', txt, re.MULTILINE)
-            txt = re.sub(r"[ \t]+", ' ', txt, re.MULTILINE)
+            txt = re.sub(r"[\n\r\f\v]+", '\n', txt)
+            txt = re.sub(r"[ \t]+", ' ', txt)
         txts[content.get("id")] = txt
-    
+
     return txts
 
 
@@ -60,38 +60,7 @@ def _raw2txt() -> None:
         print("")
 
 
-def read_cows_train_tsv(fn: str) -> pd.DataFrame:
-    "Read a COWS-L2H training tsv file, parse/modify it and return a DataFrame."
-
-    tsv = pd.read_csv(fn, sep='\t', dtype=str)
-
-    def year(*args) -> Callable:
-        return lambda value: int(value[-2:])
-
-    def order(*args) -> Callable:
-        # For example, F20 is Fall 2020. The academic terms cover the following time spans: 
-        # W goes from January to March, S from April to June, SU from July to September, and F from October to December.
-        terms = {'W':1, 'S':2, 'SU':3, 'F':4}
-        return lambda value: terms['SU'] if value.startswith('SU') else terms[value[0]]
-
-    def _sequence(*args) -> Callable:
-        return lambda value: ((year()(value) - year_min) * order_max) + order()(value)
-
-    def sequence_abs(*arg) -> Callable:
-        return lambda value: _sequence()(value) - sequence_min
-
-    order_max = max(list(tsv['Order_1'].map(order())) + list(tsv['Order_1'].map(order())))
-    # order_max: 4
-    year_min = min(list(tsv['Order_1'].map(year())) + list(tsv['Order_2'].map(year())))
-    year_max = max(list(tsv['Order_1'].map(year())) + list(tsv['Order_2'].map(year())))  # noqa: F841
-    # year_min: 17
-    # year_max: 21
-    sequence_min = min(list(tsv['Order_1'].map(_sequence())) + list(tsv['Order_2'].map(_sequence())))
-    # sequence_min: 2
-    #print(set(df['Order_1'].map(sequence_abs())).union(set(df['Order_2'].map(sequence_abs()))))
-    # {S17:0, SU17:1, F17:2, W18:3, S18:4, F18:6, W19:7, S19:8, F19:10, W20:11, S20:12, F20:14, W21:15}
-
-
+def _sequence_abs(tsv, sequence_abs):
     # {essay_x_id: {"A_"+essay_1_id, ...} , essay_y_id: {.., ...}, ...}
     essay_essays_map = defaultdict(set)
     # This will be the reverse mapping of any essay to the main essay id
@@ -100,7 +69,7 @@ def read_cows_train_tsv(fn: str) -> pd.DataFrame:
     # All essays per author
     author_essays = defaultdict(lambda: defaultdict(set))
 
-    # Build a mapping for each essay:e to all other essays that where paired with e 
+    # Build a mapping for each essay:e to all other essays that where paired with e
     for row_id, row in tsv.iterrows():
         essay_1 = row['Essay_1']
         essay_2 = row['Essay_2']
@@ -135,14 +104,14 @@ def read_cows_train_tsv(fn: str) -> pd.DataFrame:
                 print(k,sorted(_v),"|",_k,sorted(v))
                 # Obviously, this is *not* supposed to happen
                 assert True is False
-    #essay_essays_map
+    #print(essay_essays_map)
 
     for row_id, row in tsv.iterrows():
         essay_1 = str(row['Essay_1'])
         essay_2 = str(row['Essay_2'])
         sequence_abs_1 = sequence_abs()(row['Order_1'])
         sequence_abs_2 = sequence_abs()(row['Order_2'])
-        # Sanity check: 
+        # Sanity check:
         # - any of the two essay ids should map to the same unique essay id
         assert essays_essay_map[essay_1] == essays_essay_map[essay_2]
         author = "A_"+essays_essay_map[essay_1]
@@ -154,10 +123,85 @@ def read_cows_train_tsv(fn: str) -> pd.DataFrame:
     for author in author_essays:
         for seq in sorted(author_essays[author]):
             for essay in author_essays[author][seq]:
-                list.append((author,essay,seq))
+                _list.append((author,essay,seq))
 
     df = pd.DataFrame(_list, columns=['author', 'essay', 'sequence_abs'])
     #df
-    return df
+    return df, tsv
+
+
+
+def read_cita_tsv(fn: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    "Read a CItA training/testing tsv file, parse/modify it and return a processed DataFrame and the original."
+
+    tsv = pd.read_csv(fn, sep='\t', dtype=str)
+    #print(tsv)
+
+    def year(*args) -> Callable:
+        return lambda value: int(value.split('_')[0])
+
+    def order(*args) -> Callable:
+        return lambda value: int(value.split('_')[1])
+
+    def sequence_abs(*args, order_max: int=None) -> Callable:
+        if not order_max:
+            order_max = max(list(tsv['Order_1'].map(order())) + list(tsv['Order_1'].map(order())))
+        return lambda value: ((int(value.split('_')[0]) - 1) * order_max) + int(value.split('_')[1]) - 1
+
+
+    #order_max_1 = max(tsv['Order_1'].map(order()))
+    #order_max_2 = max(tsv['Order_2'].map(order()))
+    # order_max_1: 6
+    # order_max_2: 6
+
+    #year_min = min(list(tsv['Order_1'].map(year())) + list(tsv['Order_2'].map(year())))
+    year_max = max(list(tsv['Order_1'].map(year())) + list(tsv['Order_2'].map(year())))  # noqa: F841
+    #tsv['year_1'] = tsv['Order_1'].map(year())
+    #tsv['year_2'] = tsv['Order_2'].map(year())
+    ## year_1: {1,2}
+    ## year_2: {1,2}
+
+    #sequence_min = min(list(tsv['Order_1'].map(_sequence())) + list(tsv['Order_2'].map(_sequence())))
+    #tsv['sequence_abs_1'] = tsv["Order_1"].map(sequence_abs(order_max=order_max_1))
+    #tsv['sequence_abs_2'] = tsv["Order_2"].map(sequence_abs(order_max=order_max_2))
+    ## sequence_abs_1: [0,9]
+    ## sequence_abs_1: [1,10]
+
+    return _sequence_abs(tsv, sequence_abs)
+
+
+def read_cows_train_tsv(fn: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    "Read a COWS-L2H training tsv file, parse/modify it and return a DataFrame."
+
+    tsv = pd.read_csv(fn, sep='\t', dtype=str)
+
+    def year(*args) -> Callable:
+        return lambda value: int(value[-2:])
+
+    def order(*args) -> Callable:
+        # For example, F20 is Fall 2020. The academic terms cover the following time spans:
+        # W goes from January to March, S from April to June, SU from July to September, and F from October to December.
+        terms = {'W':1, 'S':2, 'SU':3, 'F':4}
+        return lambda value: terms['SU'] if value.startswith('SU') else terms[value[0]]
+
+    def _sequence(*args) -> Callable:
+        return lambda value: ((year()(value) - year_min) * order_max) + order()(value)
+
+    def sequence_abs(*arg) -> Callable:
+        return lambda value: _sequence()(value) - sequence_min
+
+    order_max = max(list(tsv['Order_1'].map(order())) + list(tsv['Order_1'].map(order())))
+    # order_max: 4
+    year_min = min(list(tsv['Order_1'].map(year())) + list(tsv['Order_2'].map(year())))
+    year_max = max(list(tsv['Order_1'].map(year())) + list(tsv['Order_2'].map(year())))  # noqa: F841
+    # year_min: 17
+    # year_max: 21
+    sequence_min = min(list(tsv['Order_1'].map(_sequence())) + list(tsv['Order_2'].map(_sequence())))
+    # sequence_min: 2
+    #print(set(df['Order_1'].map(sequence_abs())).union(set(df['Order_2'].map(sequence_abs()))))
+    # {S17:0, SU17:1, F17:2, W18:3, S18:4, F18:6, W19:7, S19:8, F19:10, W20:11, S20:12, F20:14, W21:15}
+
+    return _sequence_abs(tsv, sequence_abs)
+
 
 # ruff: noqa: E501
